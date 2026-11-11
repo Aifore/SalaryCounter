@@ -37,6 +37,8 @@ cp -R build/SalaryCounter.app /Applications/
 
 开发调试也可以直接 `swift run`，或者 `open Package.swift` 用 Xcode 打开。
 
+> 只装 Command Line Tools、没有完整 Xcode 也能编译（代码里刻意没用 `@State` 宏）。
+
 > 第一次打开如果提示“无法验证开发者”，在 Finder 里右键 App → 打开，或者到 系统设置 → 隐私与安全性 里点“仍要打开”。
 
 ## 文件结构

@@ -4,11 +4,12 @@ import ServiceManagement
 /// 点击菜单栏数字后弹出的面板
 struct MenuContentView: View {
     enum Page: Hashable { case overview, settings }
-    @State private var page: Page = .overview
+    // 不用 @State：只装了 Command Line Tools 时，新 SDK 里的 @State 宏无法展开
+    @StateObject private var page = UIBox(Page.overview)
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $page) {
+            Picker("", selection: $page.value) {
                 Text("概览").tag(Page.overview)
                 Text("设置").tag(Page.settings)
             }
@@ -17,7 +18,7 @@ struct MenuContentView: View {
             .padding([.horizontal, .top], 12)
             .padding(.bottom, 4)
 
-            switch page {
+            switch page.value {
             case .overview: OverviewView()
             case .settings: SettingsView()
             }
@@ -122,8 +123,8 @@ struct StatCell: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var store: SettingsStore
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var loginError: String?
+    @StateObject private var launchAtLogin = UIBox(SMAppService.mainApp.status == .enabled)
+    @StateObject private var loginError = UIBox<String?>(nil)
 
     // 周一 … 周日 对应 Calendar weekday
     private let weekdays: [(Int, String)] = [(2, "一"), (3, "二"), (4, "三"), (5, "四"), (6, "五"), (7, "六"), (1, "日")]
@@ -173,11 +174,11 @@ struct SettingsView: View {
 
             Section("系统") {
                 Toggle("开机自动启动", isOn: Binding(
-                    get: { launchAtLogin },
+                    get: { launchAtLogin.value },
                     set: { setLaunchAtLogin($0) }
                 ))
-                if let loginError {
-                    Text(loginError).font(.caption).foregroundStyle(.red)
+                if let message = loginError.value {
+                    Text(message).font(.caption).foregroundStyle(.red)
                 }
             }
         }
@@ -212,10 +213,10 @@ struct SettingsView: View {
         do {
             if on { try SMAppService.mainApp.register() }
             else { try SMAppService.mainApp.unregister() }
-            launchAtLogin = on
-            loginError = nil
+            launchAtLogin.value = on
+            loginError.value = nil
         } catch {
-            loginError = "设置失败：\(error.localizedDescription)（请先把 App 放到“应用程序”文件夹再试）"
+            loginError.value = "设置失败：\(error.localizedDescription)（请先把 App 放到“应用程序”文件夹再试）"
         }
     }
 }

@@ -275,3 +275,12 @@ enum Fmt {
         return String(format: "%02d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
     }
 }
+
+// MARK: - 视图局部状态
+
+/// 代替 @State 的小盒子。新 SDK 中 @State 是宏，
+/// 只装 Command Line Tools（没有完整 Xcode）时宏插件缺失会编译失败。
+final class UIBox<Value>: ObservableObject {
+    @Published var value: Value
+    init(_ value: Value) { self.value = value }
+}

@@ -72,7 +72,8 @@ final class DesktopWindowController {
 struct DesktopView: View {
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var ticker: Ticker
-    @State private var hovering = false
+    // 不用 @State：只装了 Command Line Tools 时，新 SDK 里的 @State 宏无法展开
+    @StateObject private var hover = UIBox(false)
 
     var body: some View {
         let s = store.settings
@@ -110,7 +111,7 @@ struct DesktopView: View {
         .background(VisualEffectBackground())
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(alignment: .topTrailing) {
-            if hovering {
+            if hover.value {
                 Button {
                     DesktopWindowController.shared.hide()
                 } label: {
@@ -123,7 +124,7 @@ struct DesktopView: View {
                 .help("关闭桌面窗口")
             }
         }
-        .onHover { hovering = $0 }
+        .onHover { hover.value = $0 }
         .contextMenu {
             Toggle("置顶", isOn: Binding(
                 get: { store.settings.desktopAlwaysOnTop },
