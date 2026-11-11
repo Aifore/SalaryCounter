@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ServiceManagement
 
 /// 点击菜单栏数字后弹出的面板
@@ -6,6 +7,7 @@ struct MenuContentView: View {
     enum Page: Hashable { case overview, settings }
     // 不用 @State：只装了 Command Line Tools 时，新 SDK 里的 @State 宏无法展开
     @StateObject private var page = UIBox(Page.overview)
+    @StateObject private var panelHeight = UIBox(CGFloat.zero)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,7 +25,152 @@ struct MenuContentView: View {
             case .settings: SettingsView()
             }
         }
-        .frame(width: 330)
+        .frame(width: 330, alignment: .top)
+        // 高度锁定为当前这一页的理想高度。否则面板给出的大高度会被再量回去，空白就消不掉。
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: PanelHeightKey.self, value: proxy.size.height)
+            }
+            .allowsHitTesting(false)
+        }
+        .onPreferenceChange(PanelHeightKey.self) { newHeight in
+            let rounded = newHeight.rounded(.toNearestOrAwayFromZero)
+            guard rounded > 1, abs(panelHeight.value - rounded) >= 1 else { return }
+            panelHeight.value = rounded
+        }
+        .background {
+            MenuBarPanelSizer(contentHeight: panelHeight.value)
+        }
+    }
+}
+
+/// 弹出面板只跟着内容变高，不会自己缩回内容高度。
+/// 根视图原先只锁了宽度，面板比这一页高时，内容会被垂直居中，
+/// 上下就各留一块菜单栏面板自带的半透明空白，看起来也不再贴着状态栏图标。
+/// AppKit 窗口原点在左下角，缩短高度时要把 origin.y 上移同样的量，上边缘才不动。
+private enum MenuBarPanelGeometry {
+    static func frame(windowFrame: CGRect, contentViewHeight: CGFloat, swiftUIHeight: CGFloat) -> CGRect {
+        let content = swiftUIHeight.rounded(.toNearestOrAwayFromZero)
+        guard content > 1 else { return windowFrame }
+        let chrome = contentViewHeight > 1 ? max(0, windowFrame.height - contentViewHeight) : 0
+        let target = content + chrome
+        guard abs(windowFrame.height - target) >= 1 else { return windowFrame }
+        var next = windowFrame
+        next.origin.y += windowFrame.height - target
+        next.size.height = target
+        return next
+    }
+}
+
+private struct PanelHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct MenuBarPanelSizer: NSViewRepresentable {
+    var contentHeight: CGFloat
+
+    func makeNSView(context: Context) -> MenuBarPanelSizerView {
+        let view = MenuBarPanelSizerView()
+        view.contentHeight = contentHeight
+        return view
+    }
+
+    func updateNSView(_ nsView: MenuBarPanelSizerView, context: Context) {
+        nsView.contentHeight = contentHeight
+    }
+}
+
+private final class MenuBarPanelSizerView: NSView {
+    var contentHeight: CGFloat = 0 {
+        didSet { schedule() }
+    }
+
+    private var scheduled = false
+    /// 同一个内容高度只写一次 min/max。写不进去时也不要每个布局周期再写，避免和面板抢高度。
+    private var lockedHeight: CGFloat = 0
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        schedule()
+    }
+
+    override func layout() {
+        super.layout()
+        guard needsApply else { return }
+        schedule()
+    }
+
+    private var needsApply: Bool {
+        guard contentHeight > 1, let window else { return false }
+        let next = MenuBarPanelGeometry.frame(
+            windowFrame: window.frame,
+            contentViewHeight: window.contentView?.bounds.height ?? 0,
+            swiftUIHeight: contentHeight
+        )
+        if next.height != window.frame.height || abs(next.origin.y - window.frame.origin.y) >= 1 {
+            return true
+        }
+        let content = contentHeight.rounded(.toNearestOrAwayFromZero)
+        guard lockedHeight != content else { return false }
+        return abs(window.contentMinSize.height - content) >= 1
+            || abs(window.contentMaxSize.height - content) >= 1
+    }
+
+    private func schedule() {
+        guard contentHeight > 1, !scheduled else { return }
+        scheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.scheduled = false
+            self.apply()
+        }
+    }
+
+    private func apply() {
+        guard contentHeight > 1, let window else { return }
+        let content = contentHeight.rounded(.toNearestOrAwayFromZero)
+        guard content.isFinite else { return }
+        // 先按当前 frame 算好上边缘，再改 min/max。反过来的话，系统会先按左下角原点缩短窗口，面板就掉到菜单栏下面。
+        let next = MenuBarPanelGeometry.frame(
+            windowFrame: window.frame,
+            contentViewHeight: window.contentView?.bounds.height ?? 0,
+            swiftUIHeight: content
+        )
+        let frameNeedsUpdate = next != window.frame
+        var minSize = window.contentMinSize
+        var maxSize = window.contentMaxSize
+        let locksNeedUpdate = lockedHeight != content
+            && (abs(minSize.height - content) >= 1 || abs(maxSize.height - content) >= 1)
+        guard frameNeedsUpdate || locksNeedUpdate else { return }
+
+        if locksNeedUpdate {
+            if content >= maxSize.height {
+                maxSize.height = content
+                window.contentMaxSize = maxSize
+                minSize.height = content
+                window.contentMinSize = minSize
+            } else {
+                minSize.height = content
+                window.contentMinSize = minSize
+                maxSize.height = content
+                window.contentMaxSize = maxSize
+            }
+            lockedHeight = content
+        }
+        if frameNeedsUpdate {
+            window.setFrame(next, display: true, animate: false)
+        }
     }
 }
 
