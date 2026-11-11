@@ -229,6 +229,14 @@ struct OverviewView: View {
                 }
             }
 
+            YearBonusSection(
+                monthlySalary: s.monthlySalary,
+                bonusMonths: s.bonusMonths,
+                currencySymbol: s.currencySymbol,
+                decimals: s.decimals,
+                now: ticker.now
+            )
+
             Divider()
 
             HStack {
@@ -280,6 +288,12 @@ struct SettingsView: View {
         Form {
             Section("工资") {
                 TextField("月薪", value: $store.settings.monthlySalary, format: .number)
+                TextField(
+                    "年终奖月数",
+                    value: bonusMonthsBinding,
+                    format: .number.precision(.fractionLength(0...2))
+                )
+                .help("按当前月薪折算。填 0 表示不设置，可以写 1.5 这样的小数。")
                 TextField("每月计薪天数", value: $store.settings.workDaysPerMonth, format: .number)
                 LabeledContent("工作日") {
                     HStack(spacing: 4) {
@@ -330,7 +344,14 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 480)
+        .frame(height: 520)
+    }
+
+    private var bonusMonthsBinding: Binding<Double> {
+        Binding(
+            get: { store.settings.bonusMonths },
+            set: { store.settings.bonusMonths = YearBonus.sanitizedMonths($0) }
+        )
     }
 
     private func weekdayBinding(_ day: Int) -> Binding<Bool> {
