@@ -17,7 +17,7 @@ WAIT_SLICE=${SALARYCOUNTER_WAIT_SLICE:-0.2}
 WAIT_TRIES=${SALARYCOUNTER_WAIT_TRIES:-10}
 
 if [ ! -f "$BIN" ]; then
-  echo "找不到刚编译的程序：$BIN" >&2
+  echo "找不到刚编译的程序：${BIN}" >&2
   exit 1
 fi
 
@@ -134,7 +134,7 @@ fi
 
 if ! wait_for_built; then
   stop_other_copies || true
-  echo "没有启动刚编译的 $APP。" >&2
+  echo "没有启动刚编译的 ${APP}。" >&2
   echo "如果应用程序文件夹里还有同名 SalaryCounter，系统可能按 bundle id 打开了旧副本。请先移走旧版本后再运行 make update 或 make run。" >&2
   exit 1
 fi

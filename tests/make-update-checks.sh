@@ -53,6 +53,57 @@ assert_grep "$REPO/scripts/update.sh" 'git status --porcelain' "dirty check uses
 assert_grep "$REPO/scripts/restart-app.sh" 'open -n' "relaunch uses the given app path"
 assert_no_grep "$REPO/scripts/restart-app.sh" 'open -a' "relaunch does not look the app up by name"
 
+python3 - "$REPO" << 'PY'
+import pathlib, sys
+root = pathlib.Path(sys.argv[1])
+files = [root / "scripts/update.sh", root / "scripts/restart-app.sh", root / "build.sh"]
+bad = []
+for path in files:
+    data = path.read_bytes()
+    i = 0
+    while True:
+        j = data.find(b"$", i)
+        if j < 0:
+            break
+        nxt = data[j + 1 : j + 2]
+        if nxt in (b"{", b"(", b"'", b'"', b" ", b"\n", b"\t", b"", b"*", b"#", b"@", b"!", b"?", b"-", b"$", b"\\"):
+            i = j + 1
+            continue
+        k = j + 1
+        while k < len(data) and (data[k:k+1].isalnum() or data[k:k+1] == b"_"):
+            k += 1
+        if k < len(data) and data[k] >= 0x80:
+            line = data[:j].count(b"\n") + 1
+            bad.append(f"{path.name}:{line}:{data[j:k+1]!r}")
+        i = j + 1
+if bad:
+    print("unbraced parameter next to a non-ASCII byte:")
+    print("\n".join(bad))
+    sys.exit(1)
+# macOS Bash 3.2 legal_variable_char via Latin-1 ctype: bytes C0-D6, D8-F6, F8-FF count as name characters.
+def macos_name(src: bytes) -> bytes:
+    out = bytearray()
+    for b in src:
+        ascii_name = b == ord("_") or (ord("0") <= b <= ord("9")) or (ord("A") <= b <= ord("Z")) or (ord("a") <= b <= ord("z"))
+        latin1_letter = (0xC0 <= b <= 0xD6) or (0xD8 <= b <= 0xF6) or b >= 0xF8
+        if ascii_name or latin1_letter:
+            out.append(b)
+        else:
+            break
+    return bytes(out)
+fragment = "branch".encode() + "（".encode()
+got = macos_name(fragment)
+if got == b"branch" or got != b"branch\xef":
+    print("scanner no longer matches the macOS Bash 3.2 failure", got)
+    sys.exit(1)
+shown = b"branch\xef: unbound variable".decode("utf-8", "replace")
+if shown != "branch\ufffd: unbound variable":
+    print("display form changed", shown)
+    sys.exit(1)
+print("OK: no unbraced name touches a non-ASCII byte")
+print("OK: macOS Bash 3.2 would name the old line 35 expansion", shown)
+PY
+
 make_repo() {
   local dir=$1
   git init -b main "$dir" >/dev/null
@@ -373,6 +424,54 @@ else
   cat "$OUT" >&2 || true
   cat "$LOG" >&2 || true
 fi
+
+# 路径里有空格，并且分别在 UTF-8 与 C 区域设置下走完快进和重启。
+for locale in C C.UTF-8 en_US.UTF-8; do
+  base=$(mktemp -d)
+  spaced="$base/Salary Counter"
+  mkdir -p "$spaced"
+  CASE="$spaced"
+  REPO_DIR="$CASE/repo"
+  REMOTE="$CASE/remote"
+  STATE="$CASE/state"
+  LOG="$CASE/log"
+  OUT="$CASE/out"
+  STUBS="$CASE/stubs"
+  mkdir -p "$STATE"
+  : > "$LOG"
+  make_repo "$REPO_DIR"
+  track "$REPO_DIR" "$REMOTE"
+  write_stubs "$STUBS"
+  write_build "$REPO_DIR" 0
+  git -C "$REPO_DIR" add build.sh
+  git -C "$REPO_DIR" commit -m build >/dev/null
+  git -C "$REPO_DIR" push origin main >/dev/null
+  OPEN_STALE=""
+  set +e
+  SALARYCOUNTER_ROOT="$REPO_DIR" \
+    SALARYCOUNTER_WAIT_SLICE=0 \
+    SALARYCOUNTER_WAIT_TRIES=2 \
+    STATE="$STATE" \
+    LOG="$LOG" \
+    LC_ALL="$locale" \
+    LANG="$locale" \
+    PATH="$STUBS:$PATH" \
+    bash "$REPO/scripts/update.sh" >"$OUT" 2>&1
+  UPDATE_CODE=$?
+  set -e
+  built_app="$REPO_DIR/build/SalaryCounter.app"
+  if [ "$UPDATE_CODE" -eq 0 ] \
+    && grep -q "快进当前分支 main" "$OUT" \
+    && grep -F -q "open -n $built_app" "$LOG" \
+    && [ -f "$built_app/Contents/MacOS/SalaryCounter" ]; then
+    ok "space in path and locale $locale"
+  else
+    fail "space in path and locale $locale"
+    echo "code=$UPDATE_CODE" >&2
+    cat "$OUT" >&2 || true
+    cat "$LOG" >&2 || true
+  fi
+done
 
 if [ "$failures" -eq 0 ]; then
   echo "make update checks passed"

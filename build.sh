@@ -16,6 +16,6 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 echo "▶ 本地签名（ad-hoc）…"
 codesign --force --deep --sign - "$APP"
 
-echo "✅ 完成：$APP"
+echo "✅ 完成：${APP}"
 echo "   运行：open \"$APP\""
 echo "   安装：cp -R \"$APP\" /Applications/"
