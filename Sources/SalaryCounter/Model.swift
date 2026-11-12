@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Combine)
+import Combine
+#endif
 
 // MARK: - 设置
 
@@ -34,6 +37,15 @@ struct SalarySettings: Codable, Equatable {
     var menuBarMode: MenuBarMode = .today
     /// 桌面窗口是否置顶
     var desktopAlwaysOnTop: Bool = true
+    /// 年终奖按月薪折算的月数。0 表示未设置，可以是小数。
+    var bonusMonths: Double = 0 {
+        didSet {
+            let clean = YearBonus.sanitizedMonths(bonusMonths)
+            if clean != bonusMonths {
+                bonusMonths = clean
+            }
+        }
+    }
 
     init() {}
 
@@ -52,11 +64,19 @@ struct SalarySettings: Codable, Equatable {
         decimals = try c.decodeIfPresent(Int.self, forKey: .decimals) ?? decimals
         menuBarMode = try c.decodeIfPresent(MenuBarMode.self, forKey: .menuBarMode) ?? menuBarMode
         desktopAlwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .desktopAlwaysOnTop) ?? desktopAlwaysOnTop
+        // 旧配置没有这个字段；类型不对时也不要让整份设置读失败
+        let decodedMonths = try? c.decodeIfPresent(Double.self, forKey: .bonusMonths)
+        if let raw = decodedMonths ?? nil {
+            bonusMonths = YearBonus.sanitizedMonths(raw)
+        } else {
+            bonusMonths = 0
+        }
     }
 }
 
 // MARK: - 设置存储（UserDefaults）
 
+#if canImport(Combine)
 final class SettingsStore: ObservableObject {
     static let shared = SettingsStore()
 
@@ -106,6 +126,7 @@ final class Ticker: ObservableObject {
         timer = t
     }
 }
+#endif
 
 // MARK: - 计算
 
@@ -278,9 +299,11 @@ enum Fmt {
 
 // MARK: - 视图局部状态
 
+#if canImport(Combine)
 /// 代替 @State 的小盒子。新 SDK 中 @State 是宏，
 /// 只装 Command Line Tools（没有完整 Xcode）时宏插件缺失会编译失败。
 final class UIBox<Value>: ObservableObject {
     @Published var value: Value
     init(_ value: Value) { self.value = value }
 }
+#endif
