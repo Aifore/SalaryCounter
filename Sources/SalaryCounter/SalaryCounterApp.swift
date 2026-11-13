@@ -35,5 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if SettingsStore.shared.desktopShown {
             DesktopWindowController.shared.show()
         }
+        if SettingsStore.shared.desktopPetShown {
+            DesktopPetController.shared.show()
+        }
     }
 }

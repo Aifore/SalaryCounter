@@ -82,6 +82,7 @@ final class SettingsStore: ObservableObject {
 
     private let settingsKey = "salarySettings.v1"
     private let desktopKey = "desktopWindowShown"
+    private let desktopPetKey = "desktopPetShown"
 
     @Published var settings: SalarySettings {
         didSet {
@@ -96,6 +97,10 @@ final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(desktopShown, forKey: desktopKey) }
     }
 
+    @Published var desktopPetShown: Bool {
+        didSet { UserDefaults.standard.set(desktopPetShown, forKey: desktopPetKey) }
+    }
+
     private init() {
         if let data = UserDefaults.standard.data(forKey: settingsKey),
            let s = try? JSONDecoder().decode(SalarySettings.self, from: data) {
@@ -104,6 +109,7 @@ final class SettingsStore: ObservableObject {
             settings = SalarySettings()
         }
         desktopShown = UserDefaults.standard.bool(forKey: desktopKey)
+        desktopPetShown = UserDefaults.standard.bool(forKey: desktopPetKey)
     }
 }
 

@@ -239,6 +239,12 @@ struct OverviewView: View {
 
             Divider()
 
+            Button {
+                DesktopPetController.shared.toggle()
+            } label: {
+                Label(store.desktopPetShown ? "收起小猪桌宠" : "召唤小猪桌宠", systemImage: "pawprint")
+            }
+
             HStack {
                 Button {
                     DesktopWindowController.shared.toggle()
