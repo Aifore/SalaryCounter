@@ -119,10 +119,14 @@ private struct PigPartShape: Shape {
 
 /// 投币口和两个鼻孔（玫红色）
 private struct PigLineMarks: Shape {
+    var showsSlot = true
+
     func path(in rect: CGRect) -> Path {
         let c = PigCanvas(rect: rect)
         var path = Path()
-        path.addRoundedRect(in: c.box(42, 28, 16, 3), cornerSize: c.size(1.8, 1.8))
+        if showsSlot {
+            path.addRoundedRect(in: c.box(42, 28, 16, 3), cornerSize: c.size(1.8, 1.8))
+        }
         path.addEllipse(in: c.oval(45.5, 56, 1.6, 2.2))
         path.addEllipse(in: c.oval(54.5, 56, 1.6, 2.2))
         return path
@@ -190,6 +194,8 @@ private struct PigPartLayer: View {
 struct PiggyBankFigure: View {
     var progress: Double
     var filled: Bool
+    var isPet = false
+    var eyesClosed = false
 
     var body: some View {
         let fraction = progress.isFinite ? min(max(progress, 0), 1) : 0
@@ -203,9 +209,10 @@ struct PiggyBankFigure: View {
             PigPartLayer(part: .body, level: level)
             PigBlush().fill(PiggyPalette.blush)
             PigPartLayer(part: .snout, level: level)
-            PigLineMarks().fill(PiggyPalette.line)
+            PigLineMarks(showsSlot: !isPet).fill(PiggyPalette.line)
             PigEyes().fill(PiggyPalette.ink)
-            if filled {
+                .scaleEffect(y: eyesClosed ? 0.15 : 1, anchor: UnitPoint(x: 0.5, y: 45.0 / 84))
+            if filled && !isPet {
                 PigCoin().fill(PiggyPalette.coin)
             }
         }
