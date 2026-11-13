@@ -4,58 +4,166 @@ private enum PiggyMetrics {
     static let width: CGFloat = 96
     static let height: CGFloat = 72
     static let inset: CGFloat = 2
+    static let lineWidth: CGFloat = 1.5
 }
 
 private enum PiggyPalette {
-    static let body = Color(red: 0.93, green: 0.45, blue: 0.52)
-    static let track = Color(red: 0.93, green: 0.45, blue: 0.52).opacity(0.20)
-    static let ink = Color(red: 0.42, green: 0.16, blue: 0.22)
+    /// 还没存到的部分：浅粉
+    static let track = Color(red: 0.984, green: 0.890, blue: 0.910)
+    /// 已存到的部分：上浅下深的粉色渐变
+    static let fill = LinearGradient(
+        colors: [Color(red: 0.976, green: 0.639, blue: 0.706), Color(red: 0.918, green: 0.435, blue: 0.537)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+    static let ink = Color(red: 0.541, green: 0.227, blue: 0.298)
+    static let blush = Color(red: 0.851, green: 0.310, blue: 0.447).opacity(0.4)
+    static let coin = Color(red: 0.961, green: 0.773, blue: 0.259)
+    static let coinEdge = Color(red: 0.722, green: 0.525, blue: 0.043)
 }
 
-/// 侧视存钱罐：身体、头、鼻、耳、脚和尾巴连成一个固定轮廓。
-private struct PiggyBankShape: Shape {
+/// 设计坐标系 100 x 74（左边是猪鼻子），映射到实际绘制区域。
+private struct PigCanvas {
+    let rect: CGRect
+
+    func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+        CGPoint(x: rect.minX + x * rect.width / 100, y: rect.minY + y * rect.height / 74)
+    }
+
+    func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+        CGRect(origin: p(x, y), size: CGSize(width: w * rect.width / 100, height: h * rect.height / 74))
+    }
+
+    func size(_ w: CGFloat, _ h: CGFloat) -> CGSize {
+        CGSize(width: w * rect.width / 100, height: h * rect.height / 74)
+    }
+}
+
+/// 小猪的各个部位。按 allCases 的顺序从后往前画，后画的盖住先画的。
+private enum PigPart: CaseIterable {
+    case farBackLeg, farFrontLeg, nearBackLeg, nearFrontLeg, body, ear, snout
+
+    var isFar: Bool { self == .farBackLeg || self == .farFrontLeg }
+}
+
+private struct PigPartShape: Shape {
+    let part: PigPart
+
     func path(in rect: CGRect) -> Path {
+        let c = PigCanvas(rect: rect)
         var path = Path()
-        path.addEllipse(in: box(24, 8, 16, 18, in: rect))
-        path.addEllipse(in: box(12, 22, 34, 30, in: rect))
-        path.addEllipse(in: box(2, 34, 16, 14, in: rect))
-        path.addEllipse(in: box(26, 16, 62, 46, in: rect))
-        path.addEllipse(in: box(82, 24, 16, 14, in: rect))
-        path.addRoundedRect(
-            in: box(40, 52, 14, 18, in: rect),
-            cornerSize: scaled(6, 6, in: rect)
-        )
-        path.addRoundedRect(
-            in: box(68, 52, 14, 18, in: rect),
-            cornerSize: scaled(6, 6, in: rect)
-        )
+        switch part {
+        case .farBackLeg: addLeg(to: &path, c, x: 76, bottom: 70)
+        case .farFrontLeg: addLeg(to: &path, c, x: 40, bottom: 70)
+        case .nearBackLeg: addLeg(to: &path, c, x: 66, bottom: 71)
+        case .nearFrontLeg: addLeg(to: &path, c, x: 30, bottom: 71)
+        case .body:
+            // 一条连续的蛋形轮廓，前低后高
+            path.move(to: c.p(22, 40))
+            path.addCurve(to: c.p(58, 14), control1: c.p(22, 22), control2: c.p(38, 14))
+            path.addCurve(to: c.p(93, 41), control1: c.p(80, 14), control2: c.p(93, 26))
+            path.addCurve(to: c.p(58, 63), control1: c.p(93, 56), control2: c.p(80, 63))
+            path.addCurve(to: c.p(22, 40), control1: c.p(36, 63), control2: c.p(22, 57))
+            path.closeSubpath()
+        case .ear:
+            path.move(to: c.p(32, 22))
+            path.addCurve(to: c.p(39, 7), control1: c.p(29, 14), control2: c.p(33, 7))
+            path.addCurve(to: c.p(46, 19), control1: c.p(44, 8), control2: c.p(47, 13))
+            path.closeSubpath()
+        case .snout:
+            path.move(to: c.p(12, 34))
+            path.addCurve(to: c.p(17, 30), control1: c.p(12, 31), control2: c.p(14, 30))
+            path.addLine(to: c.p(22, 30))
+            path.addCurve(to: c.p(28, 39), control1: c.p(26, 30), control2: c.p(28, 34))
+            path.addCurve(to: c.p(22, 48), control1: c.p(28, 44), control2: c.p(26, 48))
+            path.addLine(to: c.p(17, 48))
+            path.addCurve(to: c.p(12, 44), control1: c.p(14, 48), control2: c.p(12, 47))
+            path.closeSubpath()
+        }
+        return path
+    }
+
+    /// 圆头小短腿，上端藏在身体后面
+    private func addLeg(to path: inout Path, _ c: PigCanvas, x: CGFloat, bottom: CGFloat) {
+        path.move(to: c.p(x, 56))
+        path.addLine(to: c.p(x, bottom - 4))
+        path.addQuadCurve(to: c.p(x + 4, bottom), control: c.p(x, bottom))
+        path.addLine(to: c.p(x + 7, bottom))
+        path.addQuadCurve(to: c.p(x + 11, bottom - 4), control: c.p(x + 11, bottom))
+        path.addLine(to: c.p(x + 11, 56))
+        path.closeSubpath()
+    }
+}
+
+/// 卷卷的小尾巴，只描边
+private struct PigTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = PigCanvas(rect: rect)
+        var path = Path()
+        path.move(to: c.p(92.5, 37))
+        path.addCurve(to: c.p(96, 29), control1: c.p(98, 36), control2: c.p(99.5, 30))
+        path.addCurve(to: c.p(97, 33.5), control1: c.p(93, 28.5), control2: c.p(93, 33))
         return path
     }
 }
 
-/// 眼睛、鼻孔和投币口。画在填充上面，轮廓不随进度改变。
-private struct PiggyBankMarks: Shape {
+/// 投币口、眼睛、鼻孔（实心深色）
+private struct PigInkMarks: Shape {
     func path(in rect: CGRect) -> Path {
+        let c = PigCanvas(rect: rect)
         var path = Path()
-        path.addEllipse(in: box(22, 32, 5, 5, in: rect))
-        path.addEllipse(in: box(6, 38, 2.4, 3, in: rect))
-        path.addEllipse(in: box(10.5, 38, 2.4, 3, in: rect))
-        path.addRoundedRect(
-            in: box(48, 20, 20, 3.2, in: rect),
-            cornerSize: scaled(1.6, 1.6, in: rect)
-        )
+        path.addRoundedRect(in: c.box(51, 17, 15, 3.4), cornerSize: c.size(1.7, 1.7))
+        path.addEllipse(in: c.box(32.4, 28.4, 5.2, 5.2))
+        path.addEllipse(in: c.box(16.2, 36.9, 2.6, 4.2))
+        path.addEllipse(in: c.box(21.2, 36.9, 2.6, 4.2))
         return path
     }
 }
 
-private func box(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat, in rect: CGRect) -> CGRect {
-    let sx = rect.width / 100
-    let sy = rect.height / 74
-    return CGRect(x: rect.minX + x * sx, y: rect.minY + y * sy, width: width * sx, height: height * sy)
+private struct PigEyeHighlight: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(ellipseIn: PigCanvas(rect: rect).box(35.1, 29.3, 1.6, 1.6))
+    }
 }
 
-private func scaled(_ width: CGFloat, _ height: CGFloat, in rect: CGRect) -> CGSize {
-    CGSize(width: width * rect.width / 100, height: height * rect.height / 74)
+private struct PigBlush: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(ellipseIn: PigCanvas(rect: rect).box(32, 41.6, 8, 4.8))
+    }
+}
+
+/// 投币口上方的金币
+private struct PigCoin: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(ellipseIn: PigCanvas(rect: rect).box(53.3, 1.8, 10.4, 10.4))
+    }
+}
+
+private struct PigCoinMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = PigCanvas(rect: rect)
+        var path = Path()
+        path.move(to: c.p(58.5, 4.3))
+        path.addLine(to: c.p(58.5, 9.7))
+        return path
+    }
+}
+
+/// 从底部到“水位线”的区域，用来遮罩填充色。
+/// 0% 时在脚底（y=71），100% 时漫过耳朵尖（y=6）。
+private struct PigFillLevel: Shape {
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let c = PigCanvas(rect: rect)
+        let y = c.p(0, 71 - 65 * CGFloat(progress)).y
+        return Path(CGRect(x: rect.minX, y: y, width: rect.width, height: rect.maxY - y))
+    }
 }
 
 struct PiggyBankFigure: View {
@@ -64,26 +172,29 @@ struct PiggyBankFigure: View {
 
     var body: some View {
         let fraction = progress.isFinite ? min(max(progress, 0), 1) : 0
-        let innerHeight = PiggyMetrics.height - PiggyMetrics.inset * 2
-        let fillHeight = filled ? innerHeight * CGFloat(fraction) : 0
-        let emptyHeight = innerHeight - fillHeight
-        let stroke = StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round)
+        let level = filled ? fraction : 0
+        let stroke = StrokeStyle(lineWidth: PiggyMetrics.lineWidth, lineCap: .round, lineJoin: .round)
 
         ZStack {
-            PiggyBankShape()
-                .fill(PiggyPalette.track)
-            PiggyBankShape()
-                .fill(PiggyPalette.body)
-                .mask {
-                    VStack(spacing: 0) {
-                        Color.clear.frame(height: emptyHeight)
-                        Rectangle().frame(height: fillHeight)
-                    }
+            ForEach(PigPart.allCases, id: \.self) { part in
+                let shape = PigPartShape(part: part)
+                ZStack {
+                    shape.fill(PiggyPalette.track)
+                    shape.fill(PiggyPalette.fill)
+                        .opacity(part.isFar ? 0.8 : 1)
+                        .mask { PigFillLevel(progress: level) }
+                    shape.stroke(PiggyPalette.ink, style: stroke)
                 }
-            PiggyBankShape()
-                .stroke(PiggyPalette.ink, style: stroke)
-            PiggyBankMarks()
-                .stroke(PiggyPalette.ink, style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+            }
+            PigTail().stroke(PiggyPalette.ink, style: stroke)
+            PigBlush().fill(PiggyPalette.blush)
+            PigInkMarks().fill(PiggyPalette.ink)
+            PigEyeHighlight().fill(Color.white)
+            if filled {
+                PigCoin().fill(PiggyPalette.coin)
+                PigCoin().stroke(PiggyPalette.coinEdge, lineWidth: 1.1)
+                PigCoinMark().stroke(PiggyPalette.coinEdge, style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            }
         }
         .padding(PiggyMetrics.inset)
         .frame(width: PiggyMetrics.width, height: PiggyMetrics.height)
