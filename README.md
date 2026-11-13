@@ -76,7 +76,7 @@ Sources/SalaryCounter/
   SalaryCounterApp.swift      # 入口，MenuBarExtra 菜单栏数字
   Model.swift                 # 设置存储、计时器、工资计算、格式化
   YearBonus.swift             # 年终奖月数、全年进度、预估金额
-  YearBonusView.swift         # 年终存钱罐：一笔画小猪，粉色从脚底往上涨到耳朵尖
+  YearBonusView.swift         # 年终存钱罐：正面 Q 版小猪，粉色从脚底往上涨到耳朵尖
   MenuContentView.swift       # 弹出面板：概览 + 设置
   DesktopWindow.swift         # 桌面悬浮窗
 scripts/update.sh             # 快进当前分支并在编译成功后重启
